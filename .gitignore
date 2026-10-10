@@ -1,6 +1,23 @@
+# Segredos e dados pessoais
 .env
-__pycache__/
-*.pyc
-.venv/
-venv/
 banco.db
+*.db
+*.sqlite3
+
+# Python
+__pycache__/
+*.py[cod]
+venv/
+.venv/
+env/
+
+# Testes
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Sistema e editores
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
