@@ -1,0 +1,353 @@
+warning: in the working copy of 'app.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'static/css/style.css', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'static/js/script.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'templates/404.html', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'templates/500.html', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'templates/base.html', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'templates/cadastro.html', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'templates/index.html', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'templates/investimentos.html', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'templates/login.html', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'templates/perfil.html', LF will be replaced by CRLF the next time Git touches it
+[1mdiff --git a/app.py b/app.py[m
+[1mindex d9b9e3e..696232d 100644[m
+[1m--- a/app.py[m
+[1m+++ b/app.py[m
+[36m@@ -2,9 +2,12 @@[m [mfrom __future__ import annotations[m
+ [m
+ import logging[m
+ import os[m
+[32m+[m[32mimport re[m
+ import secrets[m
+ import sqlite3[m
+[32m+[m[32mimport time[m
+ from contextlib import contextmanager[m
+[32m+[m[32mfrom datetime import datetime, timezone[m
+ from decimal import Decimal, InvalidOperation, ROUND_HALF_UP[m
+ from functools import wraps[m
+ from typing import Any, Callable, Iterator, TypeVar[m
+[36m@@ -36,7 +39,7 @@[m [mload_dotenv(ENV_PATH)[m
+ [m
+ app = Flask(__name__)[m
+ app.config.update([m
+[31m-    SECRET_KEY=os.getenv("SECRET_KEY", secrets.token_hex(32)),[m
+[32m+[m[32m    SECRET_KEY=os.getenv("SECRET_KEY", "").strip() or secrets.token_hex(32),[m
+     DATABASE=DB_PATH,[m
+     BRAPI_TOKEN=os.getenv("BRAPI_TOKEN", "").strip(),[m
+     SESSION_COOKIE_HTTPONLY=True,[m
+[36m@@ -53,6 +56,15 @@[m [mlogger = logging.getLogger(__name__)[m
+ HTTP = requests.Session()[m
+ HTTP.headers.update({"User-Agent": "FinanceDashboard/1.0"})[m
+ [m
+[32m+[m[32mVALOR_MAXIMO = Decimal("999999999.99")[m
+[32m+[m[32mQUANTIDADE_MAXIMA = Decimal("1000000000")[m
+[32m+[m[32mTICKER_REGEX = re.compile(r"[A-Z0-9]{2,12}")[m
+[32m+[m[32mMILHAR_REGEX = re.compile(r"\d{1,3}(\.\d{3})+")[m
+[32m+[m[32mCACHE_COTACAO_SEGUNDOS = 60[m
+[32m+[m
+[32m+[m[32m# Hash usado para gastar o mesmo tempo no login quando o usuário não existe.[m
+[32m+[m[32mSENHA_HASH_FALSA = generate_password_hash(secrets.token_hex(16))[m
+[32m+[m
+ [m
+ # =========================================================[m
+ # TIPAGEM AUXILIAR[m
+[36m@@ -171,7 +183,7 @@[m [mdef login_required(view: F) -> F:[m
+ def load_logged_user() -> None:[m
+     usuario_id = session.get("usuario_id")[m
+ [m
+[31m-    if usuario_id is None:[m
+[32m+[m[32m    if usuario_id is None or request.endpoint == "static":[m
+         g.usuario = None[m
+         return[m
+ [m
+[36m@@ -270,7 +282,10 @@[m [mdef login():[m
+             (nome,),[m
+         ).fetchone()[m
+ [m
+[31m-        if usuario is None or not check_password_hash(usuario["senha_hash"], senha):[m
+[32m+[m[32m        senha_hash = usuario["senha_hash"] if usuario else SENHA_HASH_FALSA[m
+[32m+[m[32m        senha_correta = check_password_hash(senha_hash, senha)[m
+[32m+[m
+[32m+[m[32m        if usuario is None or not senha_correta:[m
+             flash("Usuário ou senha incorretos.", "danger")[m
+             return render_template("login.html", nome=nome)[m
+ [m
+[36m@@ -364,13 +379,39 @@[m [mdef formatar_brl(valor: Any) -> str:[m
+     return resultado.replace(",", "X").replace(".", ",").replace("X", ".")[m
+ [m
+ [m
+[32m+[m[32m@app.template_filter("data")[m
+[32m+[m[32mdef formatar_data(valor: Any) -> str:[m
+[32m+[m[32m    """Converte o CURRENT_TIMESTAMP do SQLite (UTC) para data e hora locais."""[m
+[32m+[m[32m    try:[m
+[32m+[m[32m        momento = datetime.strptime(str(valor), "%Y-%m-%d %H:%M:%S")[m
+[32m+[m[32m    except ValueError:[m
+[32m+[m[32m        return str(valor or "")[m
+[32m+[m
+[32m+[m[32m    local = momento.replace(tzinfo=timezone.utc).astimezone()[m
+[32m+[m[32m    return local.strftime("%d/%m/%Y %H:%M")[m
+[32m+[m
+[32m+[m
+[32m+[m[32m@app.template_filter("qtd")[m
+[32m+[m[32mdef formatar_quantidade(valor: Any) -> str:[m
+[32m+[m[32m    """Mostra a quantidade no padrão brasileiro, sem zeros sobrando (6 ou 1,5)."""[m
+[32m+[m[32m    try:[m
+[32m+[m[32m        numero = Decimal(str(valor)).quantize(Decimal("0.000001"), rounding=ROUND_HALF_UP)[m
+[32m+[m[32m    except (InvalidOperation, TypeError, ValueError):[m
+[32m+[m[32m        return "0"[m
+[32m+[m
+[32m+[m[32m    texto = f"{numero:,.6f}".rstrip("0").rstrip(".")[m
+[32m+[m[32m    return texto.replace(",", "X").replace(".", ",").replace("X", ".")[m
+[32m+[m
+[32m+[m
+ def converter_valor(valor: str) -> float:[m
+     texto = (valor or "").strip().replace("R$", "").replace(" ", "")[m
+ [m
+     if not texto:[m
+         raise ValueError("Valor vazio.")[m
+ [m
+[31m-    if "," in texto:[m
+[32m+[m[32m    # Padrão brasileiro: ponto separa milhar e vírgula separa centavos.[m
+[32m+[m[32m    # "1.500" sem vírgula é mil e quinhentos, não um e cinquenta.[m
+[32m+[m[32m    if "," in texto or MILHAR_REGEX.fullmatch(texto):[m
+         texto = texto.replace(".", "").replace(",", ".")[m
+ [m
+     try:[m
+[36m@@ -378,6 +419,10 @@[m [mdef converter_valor(valor: str) -> float:[m
+     except InvalidOperation as exc:[m
+         raise ValueError("Valor inválido.") from exc[m
+ [m
+[32m+[m[32m    # Decimal aceita "NaN" e "Infinity"; nenhum dos dois é um valor monetário.[m
+[32m+[m[32m    if not numero.is_finite() or abs(numero) > VALOR_MAXIMO:[m
+[32m+[m[32m        raise ValueError("Valor inválido.")[m
+[32m+[m
+     numero = numero.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)[m
+     return float(numero)[m
+ [m
+[36m@@ -388,12 +433,27 @@[m [mdef converter_quantidade(valor: str) -> float:[m
+     except InvalidOperation as exc:[m
+         raise ValueError("Quantidade inválida.") from exc[m
+ [m
+[32m+[m[32m    if not quantidade.is_finite():[m
+[32m+[m[32m        raise ValueError("Quantidade inválida.")[m
+[32m+[m
+     if quantidade <= 0:[m
+         raise ValueError("A quantidade deve ser maior que zero.")[m
+ [m
+[32m+[m[32m    if quantidade > QUANTIDADE_MAXIMA:[m
+[32m+[m[32m        raise ValueError("Quantidade muito alta.")[m
+[32m+[m
+     return float(quantidade)[m
+ [m
+ [m
+[32m+[m[32mdef validar_ticker(ticker: str) -> str:[m
+[32m+[m[32m    ticker = (ticker or "").strip().upper()[m
+[32m+[m
+[32m+[m[32m    if not TICKER_REGEX.fullmatch(ticker):[m
+[32m+[m[32m        raise ValueError("Ticker inválido.")[m
+[32m+[m
+[32m+[m[32m    return ticker[m
+[32m+[m
+[32m+[m
+ def usuario_id() -> int:[m
+     return int(g.usuario["id"])[m
+ [m
+[36m@@ -406,23 +466,16 @@[m [mdef calcular_totais() -> tuple[float, float, float, float]:[m
+     uid = usuario_id()[m
+     db = get_db()[m
+ [m
+[31m-    ganhos = db.execute([m
+[32m+[m[32m    ganhos, gastos = db.execute([m
+         """[m
+[31m-        SELECT COALESCE(SUM(valor), 0)[m
+[32m+[m[32m        SELECT[m
+[32m+[m[32m            COALESCE(SUM(CASE WHEN tipo = 'ganho' THEN valor END), 0),[m
+[32m+[m[32m            COALESCE(SUM(CASE WHEN tipo = 'gasto' THEN valor END), 0)[m
+         FROM movimentacoes_usuario[m
+[31m-        WHERE usuario_id = ? AND tipo = 'ganho'[m
+[31m-        """,[m
+[31m-        (uid,),[m
+[31m-    ).fetchone()[0][m
+[31m-[m
+[31m-    gastos = db.execute([m
+[31m-        """[m
+[31m-        SELECT COALESCE(SUM(valor), 0)[m
+[31m-        FROM movimentacoes_usuario[m
+[31m-        WHERE usuario_id = ? AND tipo = 'gasto'[m
+[32m+[m[32m        WHERE usuario_id = ?[m
+         """,[m
+         (uid,),[m
+[31m-    ).fetchone()[0][m
+[32m+[m[32m    ).fetchone()[m
+ [m
+     reserva_row = db.execute([m
+         "SELECT valor FROM cofrinho_usuario WHERE usuario_id = ?",[m
+[36m@@ -441,6 +494,22 @@[m [mdef calcular_totais() -> tuple[float, float, float, float]:[m
+     return ganhos, gastos, reserva, saldo[m
+ [m
+ [m
+[32m+[m[32mdef calcular_distribuicao([m
+[32m+[m[32m    ganhos: float, gastos: float, reserva: float, saldo: float[m
+[32m+[m[32m) -> dict[str, float]:[m
+[32m+[m[32m    """Percentual do dinheiro que foi para gastos, reserva e saldo livre."""[m
+[32m+[m[32m    base = max(ganhos, gastos + reserva)[m
+[32m+[m
+[32m+[m[32m    if base <= 0:[m
+[32m+[m[32m        return {"gastos": 0.0, "reserva": 0.0, "saldo": 0.0}[m
+[32m+[m
+[32m+[m[32m    return {[m
+[32m+[m[32m        "gastos": round(gastos / base * 100, 1),[m
+[32m+[m[32m        "reserva": round(reserva / base * 100, 1),[m
+[32m+[m[32m        "saldo": round(max(saldo, 0.0) / base * 100, 1),[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m
+ @app.route("/")[m
+ @login_required[m
+ def inicio():[m
+[36m@@ -463,6 +532,7 @@[m [mdef inicio():[m
+         gastos=gastos,[m
+         saldo=saldo,[m
+         cofrinho=reserva,[m
+[32m+[m[32m        distribuicao=calcular_distribuicao(ganhos, gastos, reserva, saldo),[m
+         usuario=g.usuario,[m
+     )[m
+ [m
+[36m@@ -639,20 +709,36 @@[m [mdef buscar_mercado(tipo: str, pesquisa: str) -> list[dict[str, Any]]:[m
+         )[m
+         resposta.raise_for_status()[m
+         dados = resposta.json()[m
+[31m-        return dados.get("stocks", [])[m
+[32m+[m[32m        ativos = dados.get("stocks") if isinstance(dados, dict) else None[m
+[32m+[m[32m        return ativos if isinstance(ativos, list) else [][m
+     except (requests.RequestException, ValueError) as exc:[m
+         logger.warning("Falha ao buscar mercado na BRAPI: %s", exc)[m
+         return [][m
+ [m
+ [m
+[31m-def buscar_cotacao(ticker: str) -> dict[str, float] | None:[m
+[32m+[m[32m_cache_cotacoes: dict[str, tuple[float, dict[str, float]]] = {}[m
+[32m+[m
+[32m+[m
+[32m+[m[32mdef buscar_cotacao(ticker: str, usar_cache: bool = False) -> dict[str, float] | None:[m
+[32m+[m[32m    """Consulta a cotação na BRAPI.[m
+[32m+[m
+[32m+[m[32m    O cache só serve para exibição da carteira; compra e venda sempre[m
+[32m+[m[32m    consultam o preço atual.[m
+[32m+[m[32m    """[m
+     if not app.config["BRAPI_TOKEN"]:[m
+         return None[m
+ [m
+[31m-    ticker = ticker.strip().upper()[m
+[31m-    if not ticker:[m
+[32m+[m[32m    try:[m
+[32m+[m[32m        # O ticker entra na URL, então só passa se tiver formato de ticker.[m
+[32m+[m[32m        ticker = validar_ticker(ticker)[m
+[32m+[m[32m    except ValueError:[m
+         return None[m
+ [m
+[32m+[m[32m    if usar_cache:[m
+[32m+[m[32m        em_cache = _cache_cotacoes.get(ticker)[m
+[32m+[m[32m        if em_cache and time.monotonic() - em_cache[0] < CACHE_COTACAO_SEGUNDOS:[m
+[32m+[m[32m            return dict(em_cache[1])[m
+[32m+[m
+     try:[m
+         resposta = HTTP.get([m
+             f"https://brapi.dev/api/quote/{ticker}",[m
+[36m@@ -660,22 +746,32 @@[m [mdef buscar_cotacao(ticker: str) -> dict[str, float] | None:[m
+             timeout=8,[m
+         )[m
+         resposta.raise_for_status()[m
+[31m-        resultados = resposta.json().get("results", [])[m
+[32m+[m[32m        dados = resposta.json()[m
+[32m+[m[32m        resultados = dados.get("results") if isinstance(dados, dict) else None[m
+ [m
+[31m-        if not resultados:[m
+[32m+[m[32m        if not isinstance(resultados, list) or not resultados:[m
+             return None[m
+ [m
+         ativo = resultados[0][m
+[32m+[m[32m        if not isinstance(ativo, dict):[m
+[32m+[m[32m            return None[m
+[32m+[m
+         preco = ativo.get("regularMarketPrice")[m
+         variacao = ativo.get("regularMarketChangePercent", 0)[m
+ [m
+         if preco is None:[m
+             return None[m
+ [m
+[31m-        return {[m
+[32m+[m[32m        cotacao = {[m
+             "preco": float(preco),[m
+             "variacao": float(variacao or 0),[m
+         }[m
+[32m+[m
+[32m+[m[32m        if cotacao["preco"] <= 0:[m
+[32m+[m[32m            return None[m
+[32m+[m
+[32m+[m[32m        _cache_cotacoes[ticker] = (time.monotonic(), cotacao)[m
+[32m+[m[32m        return dict(cotacao)[m
+     except (requests.RequestException, ValueError, TypeError) as exc:[m
+         logger.warning("Falha ao buscar cotação de %s: %s", ticker, exc)[m
+         return None[m
+[36m@@ -715,7 +811,7 @@[m [mdef investimentos():[m
+         quantidade = float(ativo["quantidade"])[m
+         preco_medio = float(ativo["preco_medio"])[m
+ [m
+[31m-        cotacao = buscar_cotacao(ticker)[m
+[32m+[m[32m        cotacao = buscar_cotacao(ticker, usar_cache=True)[m
+         preco_atual = float(cotacao["preco"]) if cotacao else preco_medio[m
+         variacao = float(cotacao["variacao"]) if cotacao else 0.0[m
+ [m
+[36m@@ -774,6 +870,13 @@[m [mdef processar_compra(ticker: str, tipo: str, quantidade: float) -> None:[m
+     preco_atual = float(cotacao["preco"])[m
+     valor_compra = round(quantidade * preco_atual, 2)[m
+ [m
+[32m+[m[32m    if valor_compra <= 0:[m
+[32m+[m[32m        raise ValueError("A quantidade é pequena demais para registrar a compra.")[m
+[32m+[m
+[32m+[m[32m    _ganhos, _gastos, _reserva, saldo = calcular_totais()[m
+[32m+[m[32m    if valor_compra > saldo:[m
+[32m+[m[32m        raise ValueError("Saldo insuficiente para essa compra.")[m
+[32m+[m
+     with transaction() as db:[m
+         existente = db.execute([m
+             """[m
+[36m@@ -829,17 +932,11 @@[m [mdef processar_compra(ticker: str, tipo: str, quantidade: float) -> None:[m
+ @app.post("/investimentos/adicionar")[m
+ @login_required[m
+ def adicionar_investimento():[m
+[31m-    ticker = request.form.get("ticker", "").strip().upper()[m
+     tipo = request.form.get("tipo", "").strip().lower()[m
+[31m-[m
+[31m-    if not ticker or len(ticker) > 15:[m
+[31m-        flash("Ticker inválido.", "danger")[m
+[31m-        return redirect(url_for("investimentos"))[m
+[31m-[m
+[31m-    if tipo not in {"acao", "ações", "acoes", "fii", "fiis"}:[m
+[31m-        tipo = "acao"[m
+[32m+[m[32m    tipo = "fii" if tipo in {"fii", "fiis"} else "acao"[m
+ [m
+     try:[m
+[32m+[m[32m        ticker = validar_ticker(request.form.get("ticker", ""))[m
+         quantidade = converter_quantidade(request.form.get("quantidade", ""))[m
+         processar_compra(ticker, tipo, quantidade)[m
+     except ValueError as exc:[m
+[36m@@ -896,6 +993,10 @@[m [mdef vender_investimento():[m
+     valor_venda = round(quantidade_venda * preco_atual, 2)[m
+     nova_quantidade = round(quantidade_atual - quantidade_venda, 6)[m
+ [m
+[32m+[m[32m    if valor_venda <= 0:[m
+[32m+[m[32m        flash("A quantidade é pequena demais para registrar a venda.", "danger")[m
+[32m+[m[32m        return redirect(url_for("investimentos"))[m
+[32m+[m
+     with transaction() as db:[m
+         if nova_quantidade <= 0:[m
+             db.execute([m
+[1mdiff --git a/static/css/style.css b/static/css/style.css[m
+[1mindex f58a4dc..8641359 100644[m
+[1m--- a/static/css/style.css[m
+[1m+++ b/static/css/style.css[m
+[36m@@ -1,2 +1,799 @@[m
+[31m-:root{--bg:#f5f7fb;--surface:#fff;--text:#172033;--muted:#6b7280;--border:#e5e7eb;--primary:#2563eb;--danger:#dc2626;--success:#15803d;--warning:#a16207;--shadow:0 10px 30px rgba(15,23,42,.08)}[m
+[31m-*{box-sizing:border-box}body{margin:0;font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:var(--bg);color:var(--text)}a{color:var(--primary);text-decoration:none}.container{width:min(1180px,92%);margin:32px auto 60px}.topbar{height:68px;background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:0 max(4%,calc((100% - 1180px)/2));position:sticky;top:0;z-index:10}.brand{font-weight:800;font-size:1.2rem;color:var(--text)}nav{display:flex;align-items:center;gap:20px}nav a,.link-button{color:var(--muted);font-weight:600}.inline-form{display:inline}.link-button{border:0;background:none;cursor:pointer;font:inherit;padding:0}.page-heading{display:flex;justify-content:space-between;align-items:center;margin-bottom:24px}.page-heading h1,.auth-card h1{margin:0 0 6px}.muted{color:var(--muted)}.stats-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:20px}.stat,.card,.auth-card{background:var(--surface);border:1px solid var(--border);border-radius:16px;box-shadow:var(--shadow)}.stat{padding:20px}.stat span{display:block;color:var(--muted);font-size:.9rem;margin-bottom:8px}.stat strong{font-size:1.45rem}.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px}.card{padding:22px;margin-bottom:20px}.card h2{margin-top:0}.card-heading{display:flex;justify-content:space-between;align-items:center;gap:15px}.form-grid{display:grid;gap:14px}.form-grid label{display:grid;gap:7px;font-weight:600;font-size:.92rem}input,select{width:100%;padding:11px 12px;border:1px solid var(--border);border-radius:10px;background:#fff;color:var(-

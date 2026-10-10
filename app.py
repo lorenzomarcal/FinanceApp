@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import secrets
 import sqlite3
+import time
 from contextlib import contextmanager
+from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from functools import wraps
 from typing import Any, Callable, Iterator, TypeVar
@@ -36,7 +39,7 @@ load_dotenv(ENV_PATH)
 
 app = Flask(__name__)
 app.config.update(
-    SECRET_KEY=os.getenv("SECRET_KEY", secrets.token_hex(32)),
+    SECRET_KEY=os.getenv("SECRET_KEY", "").strip() or secrets.token_hex(32),
     DATABASE=DB_PATH,
     BRAPI_TOKEN=os.getenv("BRAPI_TOKEN", "").strip(),
     SESSION_COOKIE_HTTPONLY=True,
@@ -52,6 +55,15 @@ logger = logging.getLogger(__name__)
 
 HTTP = requests.Session()
 HTTP.headers.update({"User-Agent": "FinanceDashboard/1.0"})
+
+VALOR_MAXIMO = Decimal("999999999.99")
+QUANTIDADE_MAXIMA = Decimal("1000000000")
+TICKER_REGEX = re.compile(r"[A-Z0-9]{2,12}")
+MILHAR_REGEX = re.compile(r"\d{1,3}(\.\d{3})+")
+CACHE_COTACAO_SEGUNDOS = 60
+
+# Hash usado para gastar o mesmo tempo no login quando o usuário não existe.
+SENHA_HASH_FALSA = generate_password_hash(secrets.token_hex(16))
 
 
 # =========================================================
@@ -171,7 +183,7 @@ def login_required(view: F) -> F:
 def load_logged_user() -> None:
     usuario_id = session.get("usuario_id")
 
-    if usuario_id is None:
+    if usuario_id is None or request.endpoint == "static":
         g.usuario = None
         return
 
@@ -270,7 +282,10 @@ def login():
             (nome,),
         ).fetchone()
 
-        if usuario is None or not check_password_hash(usuario["senha_hash"], senha):
+        senha_hash = usuario["senha_hash"] if usuario else SENHA_HASH_FALSA
+        senha_correta = check_password_hash(senha_hash, senha)
+
+        if usuario is None or not senha_correta:
             flash("Usuário ou senha incorretos.", "danger")
             return render_template("login.html", nome=nome)
 
@@ -364,19 +379,49 @@ def formatar_brl(valor: Any) -> str:
     return resultado.replace(",", "X").replace(".", ",").replace("X", ".")
 
 
+@app.template_filter("data")
+def formatar_data(valor: Any) -> str:
+    """Converte o CURRENT_TIMESTAMP do SQLite (UTC) para data e hora locais."""
+    try:
+        momento = datetime.strptime(str(valor), "%Y-%m-%d %H:%M:%S")
+    except ValueError:
+        return str(valor or "")
+
+    local = momento.replace(tzinfo=timezone.utc).astimezone()
+    return local.strftime("%d/%m/%Y %H:%M")
+
+
+@app.template_filter("qtd")
+def formatar_quantidade(valor: Any) -> str:
+    """Mostra a quantidade no padrão brasileiro, sem zeros sobrando (6 ou 1,5)."""
+    try:
+        numero = Decimal(str(valor)).quantize(Decimal("0.000001"), rounding=ROUND_HALF_UP)
+    except (InvalidOperation, TypeError, ValueError):
+        return "0"
+
+    texto = f"{numero:,.6f}".rstrip("0").rstrip(".")
+    return texto.replace(",", "X").replace(".", ",").replace("X", ".")
+
+
 def converter_valor(valor: str) -> float:
     texto = (valor or "").strip().replace("R$", "").replace(" ", "")
 
     if not texto:
         raise ValueError("Valor vazio.")
 
-    if "," in texto:
+    # Padrão brasileiro: ponto separa milhar e vírgula separa centavos.
+    # "1.500" sem vírgula é mil e quinhentos, não um e cinquenta.
+    if "," in texto or MILHAR_REGEX.fullmatch(texto):
         texto = texto.replace(".", "").replace(",", ".")
 
     try:
         numero = Decimal(texto)
     except InvalidOperation as exc:
         raise ValueError("Valor inválido.") from exc
+
+    # Decimal aceita "NaN" e "Infinity"; nenhum dos dois é um valor monetário.
+    if not numero.is_finite() or abs(numero) > VALOR_MAXIMO:
+        raise ValueError("Valor inválido.")
 
     numero = numero.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     return float(numero)
@@ -388,10 +433,25 @@ def converter_quantidade(valor: str) -> float:
     except InvalidOperation as exc:
         raise ValueError("Quantidade inválida.") from exc
 
+    if not quantidade.is_finite():
+        raise ValueError("Quantidade inválida.")
+
     if quantidade <= 0:
         raise ValueError("A quantidade deve ser maior que zero.")
 
+    if quantidade > QUANTIDADE_MAXIMA:
+        raise ValueError("Quantidade muito alta.")
+
     return float(quantidade)
+
+
+def validar_ticker(ticker: str) -> str:
+    ticker = (ticker or "").strip().upper()
+
+    if not TICKER_REGEX.fullmatch(ticker):
+        raise ValueError("Ticker inválido.")
+
+    return ticker
 
 
 def usuario_id() -> int:
@@ -406,23 +466,16 @@ def calcular_totais() -> tuple[float, float, float, float]:
     uid = usuario_id()
     db = get_db()
 
-    ganhos = db.execute(
+    ganhos, gastos = db.execute(
         """
-        SELECT COALESCE(SUM(valor), 0)
+        SELECT
+            COALESCE(SUM(CASE WHEN tipo = 'ganho' THEN valor END), 0),
+            COALESCE(SUM(CASE WHEN tipo = 'gasto' THEN valor END), 0)
         FROM movimentacoes_usuario
-        WHERE usuario_id = ? AND tipo = 'ganho'
+        WHERE usuario_id = ?
         """,
         (uid,),
-    ).fetchone()[0]
-
-    gastos = db.execute(
-        """
-        SELECT COALESCE(SUM(valor), 0)
-        FROM movimentacoes_usuario
-        WHERE usuario_id = ? AND tipo = 'gasto'
-        """,
-        (uid,),
-    ).fetchone()[0]
+    ).fetchone()
 
     reserva_row = db.execute(
         "SELECT valor FROM cofrinho_usuario WHERE usuario_id = ?",
@@ -439,6 +492,22 @@ def calcular_totais() -> tuple[float, float, float, float]:
         saldo = 0.0
 
     return ganhos, gastos, reserva, saldo
+
+
+def calcular_distribuicao(
+    ganhos: float, gastos: float, reserva: float, saldo: float
+) -> dict[str, float]:
+    """Percentual do dinheiro que foi para gastos, reserva e saldo livre."""
+    base = max(ganhos, gastos + reserva)
+
+    if base <= 0:
+        return {"gastos": 0.0, "reserva": 0.0, "saldo": 0.0}
+
+    return {
+        "gastos": round(gastos / base * 100, 1),
+        "reserva": round(reserva / base * 100, 1),
+        "saldo": round(max(saldo, 0.0) / base * 100, 1),
+    }
 
 
 @app.route("/")
@@ -463,6 +532,7 @@ def inicio():
         gastos=gastos,
         saldo=saldo,
         cofrinho=reserva,
+        distribuicao=calcular_distribuicao(ganhos, gastos, reserva, saldo),
         usuario=g.usuario,
     )
 
@@ -639,19 +709,35 @@ def buscar_mercado(tipo: str, pesquisa: str) -> list[dict[str, Any]]:
         )
         resposta.raise_for_status()
         dados = resposta.json()
-        return dados.get("stocks", [])
+        ativos = dados.get("stocks") if isinstance(dados, dict) else None
+        return ativos if isinstance(ativos, list) else []
     except (requests.RequestException, ValueError) as exc:
         logger.warning("Falha ao buscar mercado na BRAPI: %s", exc)
         return []
 
 
-def buscar_cotacao(ticker: str) -> dict[str, float] | None:
+_cache_cotacoes: dict[str, tuple[float, dict[str, float]]] = {}
+
+
+def buscar_cotacao(ticker: str, usar_cache: bool = False) -> dict[str, float] | None:
+    """Consulta a cotação na BRAPI.
+
+    O cache só serve para exibição da carteira; compra e venda sempre
+    consultam o preço atual.
+    """
     if not app.config["BRAPI_TOKEN"]:
         return None
 
-    ticker = ticker.strip().upper()
-    if not ticker:
+    try:
+        # O ticker entra na URL, então só passa se tiver formato de ticker.
+        ticker = validar_ticker(ticker)
+    except ValueError:
         return None
+
+    if usar_cache:
+        em_cache = _cache_cotacoes.get(ticker)
+        if em_cache and time.monotonic() - em_cache[0] < CACHE_COTACAO_SEGUNDOS:
+            return dict(em_cache[1])
 
     try:
         resposta = HTTP.get(
@@ -660,22 +746,32 @@ def buscar_cotacao(ticker: str) -> dict[str, float] | None:
             timeout=8,
         )
         resposta.raise_for_status()
-        resultados = resposta.json().get("results", [])
+        dados = resposta.json()
+        resultados = dados.get("results") if isinstance(dados, dict) else None
 
-        if not resultados:
+        if not isinstance(resultados, list) or not resultados:
             return None
 
         ativo = resultados[0]
+        if not isinstance(ativo, dict):
+            return None
+
         preco = ativo.get("regularMarketPrice")
         variacao = ativo.get("regularMarketChangePercent", 0)
 
         if preco is None:
             return None
 
-        return {
+        cotacao = {
             "preco": float(preco),
             "variacao": float(variacao or 0),
         }
+
+        if cotacao["preco"] <= 0:
+            return None
+
+        _cache_cotacoes[ticker] = (time.monotonic(), cotacao)
+        return dict(cotacao)
     except (requests.RequestException, ValueError, TypeError) as exc:
         logger.warning("Falha ao buscar cotação de %s: %s", ticker, exc)
         return None
@@ -715,7 +811,7 @@ def investimentos():
         quantidade = float(ativo["quantidade"])
         preco_medio = float(ativo["preco_medio"])
 
-        cotacao = buscar_cotacao(ticker)
+        cotacao = buscar_cotacao(ticker, usar_cache=True)
         preco_atual = float(cotacao["preco"]) if cotacao else preco_medio
         variacao = float(cotacao["variacao"]) if cotacao else 0.0
 
@@ -774,6 +870,13 @@ def processar_compra(ticker: str, tipo: str, quantidade: float) -> None:
     preco_atual = float(cotacao["preco"])
     valor_compra = round(quantidade * preco_atual, 2)
 
+    if valor_compra <= 0:
+        raise ValueError("A quantidade é pequena demais para registrar a compra.")
+
+    _ganhos, _gastos, _reserva, saldo = calcular_totais()
+    if valor_compra > saldo:
+        raise ValueError("Saldo insuficiente para essa compra.")
+
     with transaction() as db:
         existente = db.execute(
             """
@@ -829,17 +932,11 @@ def processar_compra(ticker: str, tipo: str, quantidade: float) -> None:
 @app.post("/investimentos/adicionar")
 @login_required
 def adicionar_investimento():
-    ticker = request.form.get("ticker", "").strip().upper()
     tipo = request.form.get("tipo", "").strip().lower()
-
-    if not ticker or len(ticker) > 15:
-        flash("Ticker inválido.", "danger")
-        return redirect(url_for("investimentos"))
-
-    if tipo not in {"acao", "ações", "acoes", "fii", "fiis"}:
-        tipo = "acao"
+    tipo = "fii" if tipo in {"fii", "fiis"} else "acao"
 
     try:
+        ticker = validar_ticker(request.form.get("ticker", ""))
         quantidade = converter_quantidade(request.form.get("quantidade", ""))
         processar_compra(ticker, tipo, quantidade)
     except ValueError as exc:
@@ -895,6 +992,10 @@ def vender_investimento():
     preco_atual = float(cotacao["preco"])
     valor_venda = round(quantidade_venda * preco_atual, 2)
     nova_quantidade = round(quantidade_atual - quantidade_venda, 6)
+
+    if valor_venda <= 0:
+        flash("A quantidade é pequena demais para registrar a venda.", "danger")
+        return redirect(url_for("investimentos"))
 
     with transaction() as db:
         if nova_quantidade <= 0:

@@ -1,1 +1,10 @@
-{% extends "base.html" %}{% block title %}Página não encontrada{% endblock %}{% block content %}<section class="error-page"><h1>404</h1><p>Página não encontrada.</p><a class="btn primary" href="{{ url_for('inicio') }}">Voltar</a></section>{% endblock %}
+{% extends "base.html" %}
+{% block title %}Página não encontrada | FinanceApp{% endblock %}
+{% block content %}
+<section class="error-page">
+  <p class="error-code">404</p>
+  <h1>Essa página não existe</h1>
+  <p class="muted">O endereço pode ter sido digitado errado ou a página foi removida.</p>
+  <a class="btn primary" href="{{ url_for('inicio') }}">Ir para o painel</a>
+</section>
+{% endblock %}

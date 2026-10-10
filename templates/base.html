@@ -4,33 +4,33 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{% block title %}FinanceApp{% endblock %}</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230a4a37'/%3E%3Cpath d='M8 21h4v3H8zm6-6h4v9h-4zm6-7h4v16h-4z' fill='%2386dbb5'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&amp;family=Figtree:wght@400;500;600;700&amp;display=swap">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
-<body>
+<body class="{% if g.usuario %}app{% else %}public{% endif %}">
   {% if g.usuario %}
-  <header class="topbar">
+  <a class="skip-link" href="#conteudo">Pular para o conteúdo</a>
+  <header class="sidebar">
     <a class="brand" href="{{ url_for('inicio') }}">FinanceApp</a>
-    <nav>
-      <a href="{{ url_for('inicio') }}">Dashboard</a>
-      <a href="{{ url_for('investimentos') }}">Investimentos</a>
-      <a href="{{ url_for('perfil') }}">Perfil</a>
-      <form action="{{ url_for('logout') }}" method="POST" class="inline-form">
+    <nav class="sidebar-nav" aria-label="Principal">
+      <a href="{{ url_for('inicio') }}" {% if request.endpoint == 'inicio' %}aria-current="page"{% endif %}>Painel</a>
+      <a href="{{ url_for('investimentos') }}" {% if request.endpoint == 'investimentos' %}aria-current="page"{% endif %}>Investimentos</a>
+      <a href="{{ url_for('perfil') }}" {% if request.endpoint == 'perfil' %}aria-current="page"{% endif %}>Perfil</a>
+    </nav>
+    <div class="sidebar-user">
+      <span class="sidebar-name">{{ g.usuario['nome'] }}</span>
+      <form action="{{ url_for('logout') }}" method="POST">
         <button class="link-button" type="submit">Sair</button>
       </form>
-    </nav>
+    </div>
   </header>
   {% endif %}
 
-  <main class="container">
-    {% with mensagens = get_flashed_messages(with_categories=true) %}
-      {% if mensagens %}
-        <div class="messages">
-          {% for categoria, mensagem in mensagens %}
-            <div class="alert alert-{{ categoria }}">{{ mensagem }}</div>
-          {% endfor %}
-        </div>
-      {% endif %}
-    {% endwith %}
+  <main class="content" id="conteudo">
+    {% block mensagens %}{% include "_mensagens.html" %}{% endblock %}
 
     {% block content %}{% endblock %}
   </main>

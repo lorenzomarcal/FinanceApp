@@ -1,21 +1,27 @@
 {% extends "base.html" %}
-{% block title %}Cadastro | FinanceApp{% endblock %}
+{% block title %}Criar conta | FinanceApp{% endblock %}
+{% block mensagens %}{% endblock %}
 {% block content %}
-<section class="auth-card">
-  <h1>Criar conta</h1>
-  <p class="muted">Comece a organizar suas finanças.</p>
-  <form method="POST" action="{{ url_for('cadastro') }}" class="form-grid">
-    <label>Usuário
-      <input type="text" name="nome" value="{{ nome or '' }}" minlength="3" maxlength="30" required autofocus>
-    </label>
-    <label>Senha
-      <input type="password" name="senha" minlength="8" required>
-    </label>
-    <label>Confirmar senha
-      <input type="password" name="confirmar_senha" minlength="8" required>
-    </label>
-    <button class="btn primary" type="submit">Criar conta</button>
-  </form>
-  <p class="auth-footer">Já tem conta? <a href="{{ url_for('login') }}">Entrar</a></p>
-</section>
+<div class="auth">
+  <span class="brand">FinanceApp</span>
+  <section class="auth-form">
+    <h1>Criar conta</h1>
+    {% include "_mensagens.html" %}
+    <form method="POST" action="{{ url_for('cadastro') }}" class="form-grid">
+      <label>Usuário
+        <input type="text" name="nome" value="{{ nome or '' }}" minlength="3" maxlength="30" autocomplete="username" required autofocus>
+      </label>
+      <p class="hint">De 3 a 30 caracteres: letras, números, ponto, hífen ou underline.</p>
+      <label>Senha
+        <input type="password" name="senha" minlength="8" autocomplete="new-password" required>
+      </label>
+      <label>Confirmar senha
+        <input type="password" name="confirmar_senha" minlength="8" autocomplete="new-password" required>
+      </label>
+      <p class="hint">Mínimo de 8 caracteres.</p>
+      <button class="btn primary" type="submit">Criar conta</button>
+    </form>
+    <p class="auth-footer">Já tem conta? <a href="{{ url_for('login') }}">Entrar</a></p>
+  </section>
+</div>
 {% endblock %}

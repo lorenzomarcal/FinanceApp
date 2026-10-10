@@ -1,25 +1,28 @@
 {% extends "base.html" %}
 {% block title %}Perfil | FinanceApp{% endblock %}
 {% block content %}
-<div class="page-heading"><div><h1>Perfil</h1><p class="muted">Gerencie os dados da sua conta.</p></div></div>
-<section class="grid-2">
-  <article class="card">
-    <h2>Alterar usuário</h2>
+<h1>Perfil</h1>
+<p class="muted page-note">Conta criada em {{ usuario['criado_em']|data }}.</p>
+<div class="settings">
+  <section class="block">
+    <h2>Nome de usuário</h2>
     <form method="POST" action="{{ url_for('perfil') }}" class="form-grid">
       <input type="hidden" name="acao" value="alterar_nome">
-      <label>Novo nome<input type="text" name="novo_nome" value="{{ usuario['nome'] }}" minlength="3" maxlength="30" required></label>
+      <label>Novo nome<input type="text" name="novo_nome" value="{{ usuario['nome'] }}" minlength="3" maxlength="30" autocomplete="username" required></label>
+      <p class="hint">De 3 a 30 caracteres: letras, números, ponto, hífen ou underline.</p>
       <button class="btn primary" type="submit">Salvar nome</button>
     </form>
-  </article>
-  <article class="card">
-    <h2>Alterar senha</h2>
+  </section>
+  <section class="block">
+    <h2>Senha</h2>
     <form method="POST" action="{{ url_for('perfil') }}" class="form-grid">
       <input type="hidden" name="acao" value="alterar_senha">
-      <label>Senha atual<input type="password" name="senha_atual" required></label>
-      <label>Nova senha<input type="password" name="nova_senha" minlength="8" required></label>
-      <label>Confirmar nova senha<input type="password" name="confirmar_senha" minlength="8" required></label>
+      <label>Senha atual<input type="password" name="senha_atual" autocomplete="current-password" required></label>
+      <label>Nova senha<input type="password" name="nova_senha" minlength="8" autocomplete="new-password" required></label>
+      <label>Confirmar nova senha<input type="password" name="confirmar_senha" minlength="8" autocomplete="new-password" required></label>
+      <p class="hint">Mínimo de 8 caracteres.</p>
       <button class="btn primary" type="submit">Alterar senha</button>
     </form>
-  </article>
-</section>
+  </section>
+</div>
 {% endblock %}

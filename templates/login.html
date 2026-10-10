@@ -1,18 +1,22 @@
 {% extends "base.html" %}
-{% block title %}Login | FinanceApp{% endblock %}
+{% block title %}Entrar | FinanceApp{% endblock %}
+{% block mensagens %}{% endblock %}
 {% block content %}
-<section class="auth-card">
-  <h1>Entrar</h1>
-  <p class="muted">Acesse sua conta financeira.</p>
-  <form method="POST" action="{{ url_for('login') }}" class="form-grid">
-    <label>Usuário
-      <input type="text" name="nome" value="{{ nome or '' }}" minlength="3" maxlength="30" required autofocus>
-    </label>
-    <label>Senha
-      <input type="password" name="senha" minlength="8" required>
-    </label>
-    <button class="btn primary" type="submit">Entrar</button>
-  </form>
-  <p class="auth-footer">Não tem conta? <a href="{{ url_for('cadastro') }}">Criar conta</a></p>
-</section>
+<div class="auth">
+  <span class="brand">FinanceApp</span>
+  <section class="auth-form">
+    <h1>Entrar</h1>
+    {% include "_mensagens.html" %}
+    <form method="POST" action="{{ url_for('login') }}" class="form-grid">
+      <label>Usuário
+        <input type="text" name="nome" value="{{ nome or '' }}" minlength="3" maxlength="30" autocomplete="username" required autofocus>
+      </label>
+      <label>Senha
+        <input type="password" name="senha" minlength="8" autocomplete="current-password" required>
+      </label>
+      <button class="btn primary" type="submit">Entrar</button>
+    </form>
+    <p class="auth-footer">Não tem conta? <a href="{{ url_for('cadastro') }}">Criar conta</a></p>
+  </section>
+</div>
 {% endblock %}

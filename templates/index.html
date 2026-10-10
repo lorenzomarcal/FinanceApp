@@ -1,69 +1,118 @@
 {% extends "base.html" %}
-{% block title %}Dashboard | FinanceApp{% endblock %}
+{% block title %}Painel | FinanceApp{% endblock %}
 {% block content %}
-<div class="page-heading">
-  <div><h1>Olá, {{ usuario['nome'] }}</h1><p class="muted">Visão geral das suas finanças.</p></div>
-</div>
+<h1>Painel</h1>
 
-<section class="stats-grid">
-  <article class="stat"><span>Ganhos</span><strong>R$ {{ ganhos|brl }}</strong></article>
-  <article class="stat"><span>Gastos</span><strong>R$ {{ gastos|brl }}</strong></article>
-  <article class="stat"><span>Reserva</span><strong>R$ {{ cofrinho|brl }}</strong></article>
-  <article class="stat"><span>Saldo disponível</span><strong>R$ {{ saldo|brl }}</strong></article>
-</section>
-
-<section class="grid-2">
-  <article class="card">
-    <h2>Nova movimentação</h2>
-    <form action="{{ url_for('adicionar') }}" method="POST" class="form-grid">
-      <label>Tipo
-        <select name="tipo" required><option value="ganho">Ganho</option><option value="gasto">Gasto</option></select>
-      </label>
-      <label>Descrição<input type="text" name="descricao" maxlength="100" required></label>
-      <label>Categoria<input type="text" name="categoria" maxlength="50" placeholder="Ex.: Alimentação" required></label>
-      <label>Valor<input type="text" name="valor" inputmode="decimal" placeholder="0,00" required></label>
-      <button class="btn primary" type="submit">Adicionar</button>
-    </form>
-  </article>
-
-  <article class="card">
-    <h2>Reserva</h2>
-    <form action="{{ url_for('adicionar_reserva') }}" method="POST" class="form-grid compact">
-      <label>Guardar valor<input type="text" name="valor_cofrinho" inputmode="decimal" placeholder="0,00" required></label>
-      <button class="btn primary" type="submit">Guardar</button>
-    </form>
-    <hr>
-    <form action="{{ url_for('retirar_reserva') }}" method="POST" class="form-grid compact">
-      <label>Retirar valor<input type="text" name="valor_retirar" inputmode="decimal" placeholder="0,00" required></label>
-      <button class="btn secondary" type="submit">Retirar</button>
-    </form>
-  </article>
-</section>
-
-<section class="card">
-  <div class="card-heading"><h2>Movimentações</h2><span>{{ movimentacoes|length }} registro(s)</span></div>
-  <div class="table-wrap">
-    <table>
-      <thead><tr><th>Tipo</th><th>Descrição</th><th>Categoria</th><th>Valor</th><th>Data</th><th></th></tr></thead>
-      <tbody>
-      {% for mov in movimentacoes %}
-        <tr>
-          <td><span class="badge {{ mov['tipo'] }}">{{ mov['tipo']|capitalize }}</span></td>
-          <td>{{ mov['descricao'] }}</td>
-          <td>{{ mov['categoria'] }}</td>
-          <td>R$ {{ mov['valor']|brl }}</td>
-          <td>{{ mov['criado_em'] }}</td>
-          <td>
-            <form action="{{ url_for('excluir', movimentacao_id=mov['id']) }}" method="POST" onsubmit="return confirmarExclusao()">
-              <button class="btn danger small" type="submit">Excluir</button>
-            </form>
-          </td>
-        </tr>
-      {% else %}
-        <tr><td colspan="6" class="empty">Nenhuma movimentação cadastrada.</td></tr>
-      {% endfor %}
-      </tbody>
-    </table>
+<section class="ledger" aria-label="Resumo das finanças">
+  <div class="ledger-line">
+    <p class="ledger-item">
+      <span class="ledger-label">Ganhos</span>
+      <strong>R$ {{ ganhos|brl }}</strong>
+    </p>
+    <span class="ledger-op" aria-hidden="true">−</span>
+    <p class="ledger-item">
+      <span class="ledger-label"><span class="dot gastos"></span>Gastos</span>
+      <strong>R$ {{ gastos|brl }}</strong>
+      {% if gastos %}<small>{{ '%.0f'|format(distribuicao.gastos) }}% do total</small>{% endif %}
+    </p>
+    <span class="ledger-op" aria-hidden="true">−</span>
+    <p class="ledger-item">
+      <span class="ledger-label"><span class="dot reserva"></span>Reserva</span>
+      <strong>R$ {{ cofrinho|brl }}</strong>
+      {% if cofrinho %}<small>{{ '%.0f'|format(distribuicao.reserva) }}% do total</small>{% endif %}
+    </p>
+    <span class="ledger-op" aria-hidden="true">=</span>
+    <p class="ledger-item total">
+      <span class="ledger-label"><span class="dot saldo"></span>Saldo disponível</span>
+      <strong class="{% if saldo < 0 %}down{% endif %}">{% if saldo < 0 %}−{% endif %}R$ {{ saldo|abs|brl }}</strong>
+      {% if saldo > 0 %}<small>{{ '%.0f'|format(distribuicao.saldo) }}% do total</small>{% endif %}
+    </p>
   </div>
+  {% if distribuicao.gastos or distribuicao.reserva or distribuicao.saldo %}
+  <div class="flow" aria-hidden="true">
+    {% if distribuicao.gastos %}<span class="flow-part gastos" style="flex-grow: {{ distribuicao.gastos }}"></span>{% endif %}
+    {% if distribuicao.reserva %}<span class="flow-part reserva" style="flex-grow: {{ distribuicao.reserva }}"></span>{% endif %}
+    {% if distribuicao.saldo %}<span class="flow-part saldo" style="flex-grow: {{ distribuicao.saldo }}"></span>{% endif %}
+  </div>
+  {% endif %}
+  {% if saldo < 0 %}
+  <p class="ledger-note down">Os gastos e a reserva passaram dos ganhos em R$ {{ saldo|abs|brl }}.</p>
+  {% endif %}
 </section>
+
+<div class="layout">
+  <aside class="layout-side">
+    <section class="block">
+      <h2>Nova movimentação</h2>
+      <form action="{{ url_for('adicionar') }}" method="POST" class="form-grid">
+        <fieldset class="segmented">
+          <legend>Tipo</legend>
+          <label><input type="radio" name="tipo" value="ganho" checked required><span>Ganho</span></label>
+          <label><input type="radio" name="tipo" value="gasto"><span>Gasto</span></label>
+        </fieldset>
+        <label>Descrição<input type="text" name="descricao" maxlength="100" placeholder="Ex.: Mercado da semana" required></label>
+        <label>Categoria<input type="text" name="categoria" maxlength="50" placeholder="Ex.: Alimentação" list="categorias" required></label>
+        <datalist id="categorias">
+          {% for categoria in (movimentacoes|map(attribute='categoria')|list + ['Alimentação', 'Moradia', 'Transporte', 'Lazer', 'Saúde', 'Salário'])|unique %}
+          <option value="{{ categoria }}"></option>
+          {% endfor %}
+        </datalist>
+        <label>Valor
+          <span class="money-field"><span aria-hidden="true">R$</span><input type="text" name="valor" inputmode="numeric" data-mascara="moeda" autocomplete="off" placeholder="0,00" required></span>
+        </label>
+        <button class="btn primary" type="submit">Adicionar</button>
+      </form>
+    </section>
+
+    <section class="block">
+      <h2>Reserva</h2>
+      <p class="muted small-text">Guardado: <strong>R$ {{ cofrinho|brl }}</strong>. O que você guarda sai do saldo disponível até ser retirado.</p>
+      <form action="{{ url_for('adicionar_reserva') }}" method="POST" class="inline-action">
+        <label>Guardar
+          <span class="money-field"><span aria-hidden="true">R$</span><input type="text" name="valor_cofrinho" inputmode="numeric" data-mascara="moeda" autocomplete="off" placeholder="0,00" required></span>
+        </label>
+        <button class="btn" type="submit">Guardar</button>
+      </form>
+      <form action="{{ url_for('retirar_reserva') }}" method="POST" class="inline-action">
+        <label>Retirar
+          <span class="money-field"><span aria-hidden="true">R$</span><input type="text" name="valor_retirar" inputmode="numeric" data-mascara="moeda" autocomplete="off" placeholder="0,00" required></span>
+        </label>
+        <button class="btn" type="submit">Retirar</button>
+      </form>
+    </section>
+  </aside>
+
+  <section class="block layout-main">
+    <div class="block-heading">
+      <h2>Movimentações</h2>
+      {% if movimentacoes %}
+      <div class="filter" role="group" aria-label="Filtrar movimentações">
+        <button type="button" data-filtro="todas" aria-pressed="true">Todas ({{ movimentacoes|length }})</button>
+        <button type="button" data-filtro="ganho" aria-pressed="false">Ganhos ({{ movimentacoes|selectattr('tipo', 'equalto', 'ganho')|list|length }})</button>
+        <button type="button" data-filtro="gasto" aria-pressed="false">Gastos ({{ movimentacoes|selectattr('tipo', 'equalto', 'gasto')|list|length }})</button>
+      </div>
+      {% endif %}
+    </div>
+
+    {% if movimentacoes %}
+    <div class="entries-head" aria-hidden="true"><span>Data</span><span>Descrição</span><span>Categoria</span><span class="num">Valor</span><span></span></div>
+    <ul class="entries" id="movimentacoes">
+      {% for mov in movimentacoes %}
+      <li class="entry" data-tipo="{{ mov['tipo'] }}">
+        <time class="entry-date">{{ mov['criado_em']|data }}</time>
+        <strong class="entry-name">{{ mov['descricao'] }}</strong>
+        <span class="entry-category">{{ mov['categoria'] }}</span>
+        <span class="entry-value {{ mov['tipo'] }}"><span class="visually-hidden">{{ mov['tipo']|capitalize }}:</span>{{ '+' if mov['tipo'] == 'ganho' else '−' }} R$ {{ mov['valor']|brl }}</span>
+        <form action="{{ url_for('excluir', movimentacao_id=mov['id']) }}" method="POST" data-confirmar="Excluir a movimentação “{{ mov['descricao'] }}”?">
+          <button class="text-button" type="submit" aria-label="Excluir {{ mov['descricao'] }}">Excluir</button>
+        </form>
+      </li>
+      {% endfor %}
+    </ul>
+    <p class="empty" id="filtro-vazio" hidden>Nenhuma movimentação desse tipo.</p>
+    {% else %}
+    <p class="empty">Nenhuma movimentação ainda. Registre o primeiro ganho ou gasto no formulário.</p>
+    {% endif %}
+  </section>
+</div>
 {% endblock %}

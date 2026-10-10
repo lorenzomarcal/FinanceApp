@@ -1,1 +1,10 @@
-{% extends "base.html" %}{% block title %}Erro interno{% endblock %}{% block content %}<section class="error-page"><h1>500</h1><p>Ocorreu um erro interno.</p><a class="btn primary" href="{{ url_for('inicio') }}">Voltar</a></section>{% endblock %}
+{% extends "base.html" %}
+{% block title %}Erro interno | FinanceApp{% endblock %}
+{% block content %}
+<section class="error-page">
+  <p class="error-code">500</p>
+  <h1>Algo deu errado do nosso lado</h1>
+  <p class="muted">Nada foi alterado na sua conta. Volte ao painel e tente de novo.</p>
+  <a class="btn primary" href="{{ url_for('inicio') }}">Ir para o painel</a>
+</section>
+{% endblock %}

@@ -1,77 +1,118 @@
 {% extends "base.html" %}
 {% block title %}Investimentos | FinanceApp{% endblock %}
+{% macro sinal(valor) %}{% if valor > 0 %}+{% elif valor < 0 %}−{% endif %}{% endmacro %}
+{% macro tom(valor) %}{% if valor > 0 %}up{% elif valor < 0 %}down{% endif %}{% endmacro %}
+{% macro pct(valor) %}{{ ('%.2f'|format(valor|abs))|replace('.', ',') }}%{% endmacro %}
 {% block content %}
-<div class="page-heading"><div><h1>Investimentos</h1><p class="muted">Acompanhe sua carteira e consulte ativos.</p></div></div>
-<section class="stats-grid">
-  <article class="stat"><span>Total investido</span><strong>R$ {{ total_investido|brl }}</strong></article>
-  <article class="stat"><span>Patrimônio</span><strong>R$ {{ patrimonio|brl }}</strong></article>
-  <article class="stat"><span>Resultado</span><strong>R$ {{ resultado_total|brl }}</strong></article>
-  <article class="stat"><span>Rentabilidade</span><strong>{{ '%.2f'|format(rentabilidade) }}%</strong></article>
+<h1>Investimentos</h1>
+
+<section class="ledger" aria-label="Resumo da carteira">
+  <div class="ledger-line">
+    <p class="ledger-item">
+      <span class="ledger-label">Valor pago</span>
+      <strong>R$ {{ total_investido|brl }}</strong>
+    </p>
+    <span class="ledger-op" aria-hidden="true">{{ '−' if resultado_total < 0 else '+' }}</span>
+    <p class="ledger-item">
+      <span class="ledger-label">{{ 'Prejuízo' if resultado_total < 0 else 'Lucro' }}</span>
+      <strong class="{{ tom(resultado_total) }}">R$ {{ resultado_total|abs|brl }}</strong>
+      {% if total_investido %}<small>{{ sinal(rentabilidade) }}{{ pct(rentabilidade) }} sobre o valor pago</small>{% endif %}
+    </p>
+    <span class="ledger-op" aria-hidden="true">=</span>
+    <p class="ledger-item total">
+      <span class="ledger-label">Vale hoje</span>
+      <strong>R$ {{ patrimonio|brl }}</strong>
+    </p>
+  </div>
 </section>
 
-<section class="grid-2">
-  <article class="card">
-    <h2>Comprar ativo</h2>
-    <form action="{{ url_for('adicionar_investimento') }}" method="POST" class="form-grid">
-      <label>Ticker<input type="text" name="ticker" maxlength="15" placeholder="Ex.: PETR4" required></label>
-      <label>Tipo<select name="tipo"><option value="acao">Ação</option><option value="fii">FII</option></select></label>
-      <label>Quantidade<input type="text" name="quantidade" inputmode="decimal" placeholder="1" required></label>
-      <button class="btn primary" type="submit">Comprar</button>
-    </form>
-  </article>
-  <article class="card">
-    <h2>Pesquisar mercado</h2>
-    <form method="GET" action="{{ url_for('investimentos') }}" class="form-grid">
-      <label>Mercado<select name="tipo"><option value="acoes" {% if tipo == 'acoes' %}selected{% endif %}>Ações</option><option value="fiis" {% if tipo == 'fiis' %}selected{% endif %}>FIIs</option></select></label>
-      <label>Pesquisa<input type="text" name="pesquisa" value="{{ pesquisa }}" placeholder="Ticker ou nome"></label>
-      <button class="btn secondary" type="submit">Pesquisar</button>
-    </form>
-    {% if not api_configurada %}<p class="muted">Configure BRAPI_TOKEN no arquivo .env para consultar cotações.</p>{% endif %}
-  </article>
-</section>
-
-<section class="card">
-  <div class="card-heading"><h2>Minha carteira</h2><span>Saldo: R$ {{ saldo|brl }}</span></div>
+<section class="block">
+  <div class="block-heading"><h2>Minha carteira</h2></div>
+  {% if carteira %}
   <div class="table-wrap">
-    <table>
-      <thead><tr><th>Ativo</th><th>Qtd.</th><th>Preço médio</th><th>Preço atual</th><th>Valor atual</th><th>Resultado</th><th>Ações</th></tr></thead>
+    <table class="holdings">
+      <thead><tr><th>Ativo</th><th class="num">Qtd.</th><th class="num">Preço médio</th><th class="num">Preço atual</th><th class="num">Valor atual</th><th class="num">Resultado</th><th class="num">Negociar</th></tr></thead>
       <tbody>
       {% for ativo in carteira %}
         <tr>
-          <td><strong>{{ ativo.ticker }}</strong></td>
-          <td>{{ ativo.quantidade }}</td>
-          <td>R$ {{ ativo.preco_medio|brl }}</td>
-          <td>R$ {{ ativo.preco_atual|brl }}</td>
-          <td>R$ {{ ativo.valor_atual|brl }}</td>
-          <td>R$ {{ ativo.resultado|brl }} ({{ '%.2f'|format(ativo.resultado_percentual) }}%)</td>
-          <td class="actions">
-            <form action="{{ url_for('comprar_investimento') }}" method="POST">
-              <input type="hidden" name="ticker" value="{{ ativo.ticker }}"><input type="hidden" name="tipo" value="{{ ativo.tipo }}">
-              <input class="mini-input" type="text" name="quantidade" placeholder="Qtd." required><button class="btn small" type="submit">Comprar</button>
-            </form>
-            <form action="{{ url_for('vender_investimento') }}" method="POST">
+          <td data-label="Ativo"><strong>{{ ativo.ticker }}</strong> <span class="muted small-text">{{ 'FII' if ativo.tipo in ('fii', 'fiis') else 'Ação' }}</span></td>
+          <td class="num" data-label="Quantidade">{{ ativo.quantidade|qtd }}</td>
+          <td class="num" data-label="Preço médio">R$ {{ ativo.preco_medio|brl }}</td>
+          <td class="num" data-label="Preço atual">R$ {{ ativo.preco_atual|brl }}</td>
+          <td class="num" data-label="Valor atual">R$ {{ ativo.valor_atual|brl }}</td>
+          <td class="num {{ tom(ativo.resultado) }}" data-label="Resultado">{{ sinal(ativo.resultado) }}R$ {{ ativo.resultado|abs|brl }} <small>{{ sinal(ativo.resultado_percentual) }}{{ pct(ativo.resultado_percentual) }}</small></td>
+          <td class="trade-cell" data-label="Negociar">
+            <form action="{{ url_for('comprar_investimento') }}" method="POST" class="trade">
               <input type="hidden" name="ticker" value="{{ ativo.ticker }}">
-              <input class="mini-input" type="text" name="quantidade" placeholder="Qtd." required><button class="btn secondary small" type="submit">Vender</button>
+              <input type="hidden" name="tipo" value="{{ ativo.tipo }}">
+              <input type="text" name="quantidade" inputmode="decimal" data-mascara="quantidade" data-sem-enter autocomplete="off" placeholder="Qtd." aria-label="Quantidade de {{ ativo.ticker }}" required>
+              <button class="btn small" type="submit">Comprar</button>
+              <button class="btn small" type="submit" formaction="{{ url_for('vender_investimento') }}">Vender</button>
             </form>
-            <form action="{{ url_for('excluir_investimento', investimento_id=ativo.id) }}" method="POST" onsubmit="return confirmarExclusao()">
-              <button class="btn danger small" type="submit">Excluir</button>
+            <form action="{{ url_for('excluir_investimento', investimento_id=ativo.id) }}" method="POST" data-confirmar="Remover {{ ativo.ticker }} da carteira? O valor não volta para o saldo. Para receber o dinheiro, use Vender.">
+              <button class="text-button" type="submit" aria-label="Remover {{ ativo.ticker }} da carteira">Remover</button>
             </form>
           </td>
         </tr>
-      {% else %}<tr><td colspan="7" class="empty">Sua carteira está vazia.</td></tr>{% endfor %}
+      {% endfor %}
       </tbody>
     </table>
   </div>
+  {% else %}
+  <p class="empty">Sua carteira está vazia. Compre o primeiro ativo no formulário abaixo.</p>
+  {% endif %}
 </section>
 
+<div class="pair">
+  <section class="block">
+    <h2>Comprar ativo</h2>
+    <p class="muted small-text">Saldo disponível: <strong>R$ {{ saldo|brl }}</strong>. A compra usa a cotação do momento.</p>
+    <form action="{{ url_for('adicionar_investimento') }}" method="POST" class="form-grid" id="form-compra">
+      <label>Ticker<input type="text" name="ticker" maxlength="12" placeholder="Ex.: PETR4" autocapitalize="characters" autocomplete="off" required></label>
+      <fieldset class="segmented">
+        <legend>Tipo</legend>
+        <label><input type="radio" name="tipo" value="acao" checked><span>Ação</span></label>
+        <label><input type="radio" name="tipo" value="fii"><span>FII</span></label>
+      </fieldset>
+      <label>Quantidade<input type="text" name="quantidade" inputmode="decimal" data-mascara="quantidade" autocomplete="off" placeholder="1" required></label>
+      <button class="btn primary" type="submit">Comprar</button>
+    </form>
+  </section>
+
+  <section class="block">
+    <h2>Pesquisar no mercado</h2>
+    {% if api_configurada %}
+    <form method="GET" action="{{ url_for('investimentos') }}" class="form-grid">
+      <fieldset class="segmented">
+        <legend>Mercado</legend>
+        <label><input type="radio" name="tipo" value="acoes" {% if tipo == 'acoes' %}checked{% endif %}><span>Ações</span></label>
+        <label><input type="radio" name="tipo" value="fiis" {% if tipo == 'fiis' %}checked{% endif %}><span>FIIs</span></label>
+      </fieldset>
+      <label>Ticker ou nome<input type="search" name="pesquisa" value="{{ pesquisa }}" maxlength="40" placeholder="Ex.: Petrobras"></label>
+      <button class="btn" type="submit">Pesquisar</button>
+    </form>
+    {% else %}
+    <p class="muted small-text">A pesquisa e as cotações estão desligadas. Defina <code>BRAPI_TOKEN</code> no arquivo <code>.env</code> e reinicie o app.</p>
+    {% endif %}
+  </section>
+</div>
+
 {% if mercado %}
-<section class="card">
-  <h2>Resultados do mercado</h2>
-  <div class="market-grid">
+<section class="block">
+  <div class="block-heading"><h2>{{ 'FIIs' if tipo == 'fiis' else 'Ações' }} mais negociad{{ 'os' if tipo == 'fiis' else 'as' }}{% if pesquisa %} para “{{ pesquisa }}”{% endif %}</h2></div>
+  <ul class="market">
   {% for ativo in mercado %}
-    <article class="market-item"><strong>{{ ativo.stock or ativo.name or ativo.symbol }}</strong><span>{{ ativo.name or '' }}</span><span>R$ {{ ativo.close or ativo.regularMarketPrice or 0 }}</span></article>
+    {% set codigo = ativo.stock or ativo.symbol %}
+    <li>
+      <strong>{{ codigo or ativo.name }}</strong>
+      <span class="market-name">{{ ativo.name or '' }}</span>
+      <span class="market-price">R$ {{ (ativo.close or ativo.regularMarketPrice or 0)|brl }}</span>
+      {% if codigo %}<button class="text-button" type="button" data-usar-ticker="{{ codigo }}" data-usar-tipo="{{ 'fii' if tipo == 'fiis' else 'acao' }}">Usar na compra</button>{% endif %}
+    </li>
   {% endfor %}
-  </div>
+  </ul>
 </section>
+{% elif pesquisa and api_configurada %}
+<section class="block"><p class="empty">Nada encontrado para “{{ pesquisa }}”. Confira o ticker ou tente outro nome.</p></section>
 {% endif %}
 {% endblock %}
