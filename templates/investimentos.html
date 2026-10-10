@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}Investimentos | FinanceApp{% endblock %}
+{% block content %}
+<div class="page-heading"><div><h1>Investimentos</h1><p class="muted">Acompanhe sua carteira e consulte ativos.</p></div></div>
+<section class="stats-grid">
+  <article class="stat"><span>Total investido</span><strong>R$ {{ total_investido|brl }}</strong></article>
+  <article class="stat"><span>Patrimônio</span><strong>R$ {{ patrimonio|brl }}</strong></article>
+  <article class="stat"><span>Resultado</span><strong>R$ {{ resultado_total|brl }}</strong></article>
+  <article class="stat"><span>Rentabilidade</span><strong>{{ '%.2f'|format(rentabilidade) }}%</strong></article>
+</section>
+
+<section class="grid-2">
+  <article class="card">
+    <h2>Comprar ativo</h2>
+    <form action="{{ url_for('adicionar_investimento') }}" method="POST" class="form-grid">
+      <label>Ticker<input type="text" name="ticker" maxlength="15" placeholder="Ex.: PETR4" required></label>
+      <label>Tipo<select name="tipo"><option value="acao">Ação</option><option value="fii">FII</option></select></label>
+      <label>Quantidade<input type="text" name="quantidade" inputmode="decimal" placeholder="1" required></label>
+      <button class="btn primary" type="submit">Comprar</button>
+    </form>
+  </article>
+  <article class="card">
+    <h2>Pesquisar mercado</h2>
+    <form method="GET" action="{{ url_for('investimentos') }}" class="form-grid">
+      <label>Mercado<select name="tipo"><option value="acoes" {% if tipo == 'acoes' %}selected{% endif %}>Ações</option><option value="fiis" {% if tipo == 'fiis' %}selected{% endif %}>FIIs</option></select></label>
+      <label>Pesquisa<input type="text" name="pesquisa" value="{{ pesquisa }}" placeholder="Ticker ou nome"></label>
+      <button class="btn secondary" type="submit">Pesquisar</button>
+    </form>
+    {% if not api_configurada %}<p class="muted">Configure BRAPI_TOKEN no arquivo .env para consultar cotações.</p>{% endif %}
+  </article>
+</section>
+
+<section class="card">
+  <div class="card-heading"><h2>Minha carteira</h2><span>Saldo: R$ {{ saldo|brl }}</span></div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Ativo</th><th>Qtd.</th><th>Preço médio</th><th>Preço atual</th><th>Valor atual</th><th>Resultado</th><th>Ações</th></tr></thead>
+      <tbody>
+      {% for ativo in carteira %}
+        <tr>
+          <td><strong>{{ ativo.ticker }}</strong></td>
+          <td>{{ ativo.quantidade }}</td>
+          <td>R$ {{ ativo.preco_medio|brl }}</td>
+          <td>R$ {{ ativo.preco_atual|brl }}</td>
+          <td>R$ {{ ativo.valor_atual|brl }}</td>
+          <td>R$ {{ ativo.resultado|brl }} ({{ '%.2f'|format(ativo.resultado_percentual) }}%)</td>
+          <td class="actions">
+            <form action="{{ url_for('comprar_investimento') }}" method="POST">
+              <input type="hidden" name="ticker" value="{{ ativo.ticker }}"><input type="hidden" name="tipo" value="{{ ativo.tipo }}">
+              <input class="mini-input" type="text" name="quantidade" placeholder="Qtd." required><button class="btn small" type="submit">Comprar</button>
+            </form>
+            <form action="{{ url_for('vender_investimento') }}" method="POST">
+              <input type="hidden" name="ticker" value="{{ ativo.ticker }}">
+              <input class="mini-input" type="text" name="quantidade" placeholder="Qtd." required><button class="btn secondary small" type="submit">Vender</button>
+            </form>
+            <form action="{{ url_for('excluir_investimento', investimento_id=ativo.id) }}" method="POST" onsubmit="return confirmarExclusao()">
+              <button class="btn danger small" type="submit">Excluir</button>
+            </form>
+          </td>
+        </tr>
+      {% else %}<tr><td colspan="7" class="empty">Sua carteira está vazia.</td></tr>{% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+{% if mercado %}
+<section class="card">
+  <h2>Resultados do mercado</h2>
+  <div class="market-grid">
+  {% for ativo in mercado %}
+    <article class="market-item"><strong>{{ ativo.stock or ativo.name or ativo.symbol }}</strong><span>{{ ativo.name or '' }}</span><span>R$ {{ ativo.close or ativo.regularMarketPrice or 0 }}</span></article>
+  {% endfor %}
+  </div>
+</section>
+{% endif %}
+{% endblock %}

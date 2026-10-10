@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Perfil | FinanceApp{% endblock %}
+{% block content %}
+<div class="page-heading"><div><h1>Perfil</h1><p class="muted">Gerencie os dados da sua conta.</p></div></div>
+<section class="grid-2">
+  <article class="card">
+    <h2>Alterar usuário</h2>
+    <form method="POST" action="{{ url_for('perfil') }}" class="form-grid">
+      <input type="hidden" name="acao" value="alterar_nome">
+      <label>Novo nome<input type="text" name="novo_nome" value="{{ usuario['nome'] }}" minlength="3" maxlength="30" required></label>
+      <button class="btn primary" type="submit">Salvar nome</button>
+    </form>
+  </article>
+  <article class="card">
+    <h2>Alterar senha</h2>
+    <form method="POST" action="{{ url_for('perfil') }}" class="form-grid">
+      <input type="hidden" name="acao" value="alterar_senha">
+      <label>Senha atual<input type="password" name="senha_atual" required></label>
+      <label>Nova senha<input type="password" name="nova_senha" minlength="8" required></label>
+      <label>Confirmar nova senha<input type="password" name="confirmar_senha" minlength="8" required></label>
+      <button class="btn primary" type="submit">Alterar senha</button>
+    </form>
+  </article>
+</section>
+{% endblock %}

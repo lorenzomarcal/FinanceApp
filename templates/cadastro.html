@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}Cadastro | FinanceApp{% endblock %}
+{% block content %}
+<section class="auth-card">
+  <h1>Criar conta</h1>
+  <p class="muted">Comece a organizar suas finanças.</p>
+  <form method="POST" action="{{ url_for('cadastro') }}" class="form-grid">
+    <label>Usuário
+      <input type="text" name="nome" value="{{ nome or '' }}" minlength="3" maxlength="30" required autofocus>
+    </label>
+    <label>Senha
+      <input type="password" name="senha" minlength="8" required>
+    </label>
+    <label>Confirmar senha
+      <input type="password" name="confirmar_senha" minlength="8" required>
+    </label>
+    <button class="btn primary" type="submit">Criar conta</button>
+  </form>
+  <p class="auth-footer">Já tem conta? <a href="{{ url_for('login') }}">Entrar</a></p>
+</section>
+{% endblock %}

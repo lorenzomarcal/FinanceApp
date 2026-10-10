@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}Dashboard | FinanceApp{% endblock %}
+{% block content %}
+<div class="page-heading">
+  <div><h1>Olá, {{ usuario['nome'] }}</h1><p class="muted">Visão geral das suas finanças.</p></div>
+</div>
+
+<section class="stats-grid">
+  <article class="stat"><span>Ganhos</span><strong>R$ {{ ganhos|brl }}</strong></article>
+  <article class="stat"><span>Gastos</span><strong>R$ {{ gastos|brl }}</strong></article>
+  <article class="stat"><span>Reserva</span><strong>R$ {{ cofrinho|brl }}</strong></article>
+  <article class="stat"><span>Saldo disponível</span><strong>R$ {{ saldo|brl }}</strong></article>
+</section>
+
+<section class="grid-2">
+  <article class="card">
+    <h2>Nova movimentação</h2>
+    <form action="{{ url_for('adicionar') }}" method="POST" class="form-grid">
+      <label>Tipo
+        <select name="tipo" required><option value="ganho">Ganho</option><option value="gasto">Gasto</option></select>
+      </label>
+      <label>Descrição<input type="text" name="descricao" maxlength="100" required></label>
+      <label>Categoria<input type="text" name="categoria" maxlength="50" placeholder="Ex.: Alimentação" required></label>
+      <label>Valor<input type="text" name="valor" inputmode="decimal" placeholder="0,00" required></label>
+      <button class="btn primary" type="submit">Adicionar</button>
+    </form>
+  </article>
+
+  <article class="card">
+    <h2>Reserva</h2>
+    <form action="{{ url_for('adicionar_reserva') }}" method="POST" class="form-grid compact">
+      <label>Guardar valor<input type="text" name="valor_cofrinho" inputmode="decimal" placeholder="0,00" required></label>
+      <button class="btn primary" type="submit">Guardar</button>
+    </form>
+    <hr>
+    <form action="{{ url_for('retirar_reserva') }}" method="POST" class="form-grid compact">
+      <label>Retirar valor<input type="text" name="valor_retirar" inputmode="decimal" placeholder="0,00" required></label>
+      <button class="btn secondary" type="submit">Retirar</button>
+    </form>
+  </article>
+</section>
+
+<section class="card">
+  <div class="card-heading"><h2>Movimentações</h2><span>{{ movimentacoes|length }} registro(s)</span></div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Tipo</th><th>Descrição</th><th>Categoria</th><th>Valor</th><th>Data</th><th></th></tr></thead>
+      <tbody>
+      {% for mov in movimentacoes %}
+        <tr>
+          <td><span class="badge {{ mov['tipo'] }}">{{ mov['tipo']|capitalize }}</span></td>
+          <td>{{ mov['descricao'] }}</td>
+          <td>{{ mov['categoria'] }}</td>
+          <td>R$ {{ mov['valor']|brl }}</td>
+          <td>{{ mov['criado_em'] }}</td>
+          <td>
+            <form action="{{ url_for('excluir', movimentacao_id=mov['id']) }}" method="POST" onsubmit="return confirmarExclusao()">
+              <button class="btn danger small" type="submit">Excluir</button>
+            </form>
+          </td>
+        </tr>
+      {% else %}
+        <tr><td colspan="6" class="empty">Nenhuma movimentação cadastrada.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}
